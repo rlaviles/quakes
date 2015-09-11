@@ -1,30 +1,33 @@
 library(shiny)
-library(ggplot2)
+library(RCurl)
+library(Hmisc)
+library(leaflet)
+library(stringi)
+library(htmltools)
+library(RColorBrewer)
 
 shinyServer(function(input, output) {
-
-  dataset <- reactive({
-    diamonds[sample(nrow(diamonds), input$sampleSize),]
+    x<-getURL("https://raw.githubusercontent.com/rlaviles/DevDataProducts_shiny/master/Quakes.csv")
+    
+    quakesRaw_n<- read.csv(text = x)
+    
+    qRaw_n <-quakesRaw_n[complete.cases(quakesRaw_n[,7]),]
+    
+    qRaw_n$time <- strptime(qRaw_n$time, format = "%Y-%m-%dT%H:%M:%S")
+    
+    magTime <- subset(qRaw_n, qRaw_n$mag>=5.8 & qRaw_n$time < '2010-02-28' & qRaw_n$mag!=8.8, select=c(qRaw_n$longitude, qRaw_n$latitude))
+    
+    map = leaflet() %>% 
+      addTiles() %>% 
+      addPopups(-72.898, -36.122, popup = "8.8Richter, Lat=-36.1, Lon=-72.9, Depth= 22.9[km], 2010/02/27") %>%
+      addCircles(data=magTime[magTime$mag>5.8,], ~longitude, ~latitude, color="#03F", fill="#03F", radius=2500,
+                 popup=~sprintf("<b>Aftershock: %s</b><hr noshade size='1'/> 
+                        Longitude: %1.3f<br/> 
+                        Latitude: %1.3f<br/>
+                        Magnitude: %1.3f [Richter]<br/>
+                        Depth: %1.3f [km]", 
+                                htmlEscape(time), htmlEscape(longitude), 
+                                htmlEscape(latitude), htmlEscape(mag), 
+                                htmlEscape(depth))) %>% html_print
+    myMap <- renderLeaflet(map)
   })
-
-  output$plot <- renderPlot({
-
-    p <- ggplot(dataset(), aes_string(x=input$x, y=input$y)) + geom_point()
-
-    if (input$color != 'None')
-      p <- p + aes_string(color=input$color)
-
-    facets <- paste(input$facet_row, '~', input$facet_col)
-    if (facets != '. ~ .')
-      p <- p + facet_grid(facets)
-
-    if (input$jitter)
-      p <- p + geom_jitter()
-    if (input$smooth)
-      p <- p + geom_smooth()
-
-    print(p)
-
-  }, height=700)
-
-})
